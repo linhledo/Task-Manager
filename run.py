@@ -10,7 +10,7 @@ connection = psycopg.connect(
 
 cursor = connection.cursor()
 
-cursor.execute("SELECT * FROM users")
+cursor.execute("SELECT * FROM tasks")
 
 users = cursor.fetchall()
 

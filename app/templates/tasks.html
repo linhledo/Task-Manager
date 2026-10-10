@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Tasks</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <header class="header">
+        <h1>Welcome to your Task Manager!</h1>
+    </header>
+
+    <main class="container">
+        <h1>My Tasks</h1>
+        {% if tasks %}
+            <ul>
+                {% for task in tasks %}
+                    <section class="task-card">
+                        <h2>{{ task.description }}</h2>
+                        <div class="task-details">
+                            <p>
+                                <strong>Priority:</strong>
+                                <span class="priority">{{ task.priority }}</span>
+                            </p>
+
+                            <p>
+                                <strong>Due:</strong>
+                                {% if task.due_date %}
+                                    {{ task.due_date }}
+                                {% else %}
+                                    No due date
+                                {% endif %}
+                            </p>
+                            
+                             <p>
+                                <strong>Status:</strong>
+                                {{ task.status }}
+                            </p>
+                        </div>
+                    </section>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p>You don't have any tasks yet!</p>
+        {% endif %}
+    </main>
+</body>
+</html>

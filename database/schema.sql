@@ -7,6 +7,7 @@ CREATE TABLE users (
 CREATE TABLE tasks (
     id SERIAL PRIMARY KEY,
     user_id SERIAL NOT NULL REFERENCES users(id),
+    description VARCHAR(100) NOT NULL DEFAULT "Task Description", 
     due_date TIMESTAMP, 
     priority INTEGER NOT NULL DEFAULT 0,
     status VARCHAR(20) NOT NULL DEFAULT 'PENDING',

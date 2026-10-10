@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task Manager</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <header class="header">
+        <h1>Welcome to your Task Manager!</h1>
+    </header>
+    
+    <main class="container">
+        <section class="task-card">
+            <p class="eyebrow">YOUR CURRENT TASK</p>
+
+            {% if task %}
+                <h2>{{ task.description }}</h2>
+
+                <div class="task-details">
+                    <p>
+                        <strong>Priority:</strong>
+                        <span class="priority">{{ task.priority }}</span>
+                    </p>
+
+                    <p>
+                        <strong>Due:</strong>
+                        {% if task.due_date %}
+                            {{ task.due_date }}
+                        {% else %}
+                            No due date
+                        {% endif %}
+                    </p>
+                </div>
+
+                <form action="{{ url_for('complete_task', task_id=task.id) }}"
+                method="POST">
+                    <button type="submit" class="complete-button">
+                        ✓ Complete Task
+                    </button>
+                </form>
+            
+            {% else %}
+                <h2>You're all caught up! 🎉</h2>
+                <p>No pending tasks. Take a break or add a new task.</p>
+            {% endif %}
+        </section>
+
+        <section class="actions">
+            <a href="{{ url_for('add_task') }}" class="action-button">
+                + Add New Task
+            </a>
+            <a href="{{ url_for('show_tasks') }}" class="action-button secondary">
+                View All Tasks
+            </a>
+        </section>
+    </main>
+</body>
+</html>
