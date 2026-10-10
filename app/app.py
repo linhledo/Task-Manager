@@ -1,7 +1,10 @@
-from flask import Flask, redirect, url_for, render_template
+from datetime import datetime
+from flask import Flask, redirect, url_for, render_template, request, flash
 import psycopg
 
 app = Flask(__name__)
+
+app.secret_key = 'temporary-secret-key'
 
 def get_connection():
     return psycopg.connect(
@@ -83,9 +86,29 @@ def show_tasks():
         tasks=tasks
     )
 
-@app.route("/tasks/new")
+@app.route("/tasks/new", methods=["GET", "POST"])
 def add_task():
-    return "We'll build the add-task page next!"
+    if request.method == "POST":
+        description = request.form["description"]
+        due_date = request.form.get("due_date")
+        priority = request.form["priority"]
+
+        if due_date:
+            due_date = datetime.fromisoformat(due_date)
+        else:
+            due_date = None
+
+        #TODO: need to change for different users
+        with get_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute("""
+                        INSERT INTO tasks (user_id, description, due_date, priority)
+                        VALUES (1, %s, %s, %s) 
+                    """, (description, due_date, priority))
+
+        flash("Task added successfully ✓", "success")
+        return redirect(url_for("dashboard"))
+    return render_template("add_task.html")
 
 @app.route("/tasks/<int:task_id>/complete", methods=["POST"])
 def complete_task(task_id):
@@ -97,3 +120,34 @@ def complete_task(task_id):
                 where id = %s
             """, (task_id,))
     return redirect(url_for("dashboard"))
+
+@app.route("/tasks/clear-completed", methods=["POST"])
+def clear_completed_tasks():
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                DELETE FROM tasks
+                WHERE status = 'COMPLETED'
+            """)
+
+            deleted_count = cursor.rowcount
+    flash(
+        f"Deleted {deleted_count} completed task(s).",
+        "success"
+    )
+    return redirect(url_for("show_tasks"))
+
+@app.route("/tasks/<int:task_id>/revert", methods=["POST"])
+def revert_task(task_id):
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE tasks
+                SET status = 'PENDING'
+                where id = %s
+            """, (task_id,))
+    flash(
+        f"Reverted task back to Pending ✓",
+        "success"
+    )
+    return redirect(url_for("show_tasks"))

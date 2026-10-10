@@ -12,7 +12,31 @@
     </header>
 
     <main class="container">
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
         <h1>My Tasks</h1>
+
+        <section class="actions">
+            <a href="{{ url_for('dashboard') }}" class="action-button">
+                ← Back To Dashboard
+            </a>
+
+            <form action="{{ url_for('clear_completed_tasks') }}" 
+                    method="POST"
+                    onsubmit="return confirm('Delete ALL completed tasks? This cannot be undone.');">
+                    <button type="submit" class="action-button secondary">Clear Completed Tasks 🗑️</button>
+            </form>
+        </section>
+
         {% if tasks %}
             <ul>
                 {% for task in tasks %}
@@ -38,11 +62,22 @@
                                 {{ task.status }}
                             </p>
                         </div>
+
+                        {% if task.status == "COMPLETED" %}
+                            <form action="{{ url_for('revert_task', task_id=task.id) }}" 
+                            method="POST">
+                                <button type="submit" class="revert-button">
+                                    ⤹ Revert Task Back To Pending
+                                </button>
+                            </form>
+                        {% endif %}
                     </section>
                 {% endfor %}
             </ul>
         {% else %}
-            <p>You don't have any tasks yet!</p>
+            <section class="task-card" style="margin-top:3cm">
+                <h2>You don't have any tasks yet!</h2>
+            </section>
         {% endif %}
     </main>
 </body>
