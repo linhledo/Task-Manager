@@ -1,10 +1,21 @@
 from datetime import datetime
-from flask import Flask, redirect, url_for, render_template, request, flash
+from flask import Flask, redirect, url_for, render_template, request, session, flash
+from functools import wraps
+import os
 import psycopg
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 
-app.secret_key = 'temporary-secret-key'
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY")
+if not app.config["SECRET_KEY"]:
+    raise RuntimeError("Please set the SECRET_KEY environment variable.")
+
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE = os.environ.get("COOKIE_SECURE") == "1"
+)
 
 def get_connection():
     return psycopg.connect(
@@ -12,19 +23,28 @@ def get_connection():
             port=5432,
             dbname="postgres",
             user="postgres",
-            password="2006"
+            password=os.environ["DB_PASSWORD"]
         )
 
+def login_required(function):
+    @wraps(function)
+    def wrapper(*args, **kwargs):
+        if "user_id" not in session:
+            return redirect(url_for("login"))
+        return function(*args, **kwargs)
+    return wrapper
+
     
-def get_tasks() -> list[dict] | None:
+def get_tasks(user_id) -> list[dict] | None:
     connection = get_connection()
     cursor = connection.cursor()
 
     cursor.execute("""
         SELECT * 
         FROM tasks 
+        WHERE user_id = %s
         ORDER BY priority DESC
-    """)
+    """, (user_id,))
 
     rows = cursor.fetchall()
 
@@ -48,16 +68,16 @@ def get_tasks() -> list[dict] | None:
 
     return tasks
 
-def get_current_task() -> dict | None:
+def get_current_task(user_id) -> dict | None:
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute("""
                 SELECT id, description, due_date, priority, status
                 FROM tasks
-                WHERE status = 'PENDING'
-                ORDER BY priority DESC, due_date ASC NULLS LAST
+                WHERE user_id = %s AND status = 'PENDING'
+                ORDER BY priority DESC, due_date ASC NULLS LAST, created_at ASC
                 LIMIT 1
-            """)
+            """, (user_id,))
 
             row = cursor.fetchone()
 
@@ -72,14 +92,93 @@ def get_current_task() -> dict | None:
                 "status": row[4]
             }
 
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "").strip()
+
+        if not username or not password:
+            flash("Please enter a username and password", "error")
+            return redirect(url_for("register"))
+
+        if len(username) > 100 or len(password) < 8:
+            flash("Username must be at most 100 characters and password must be at least 8 characters", 
+                  "error")
+            return redirect(url_for("register"))
+
+        password_hash = generate_password_hash(password)
+
+        user_id = ""
+        try:
+            with get_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute("""
+                        INSERT INTO users (username, password_hash)
+                        VALUES (%s, %s)
+                        RETURNING id
+                    """, (username, password_hash))
+
+                    row = cursor.fetchone()
+
+                    if row is None:
+                        flash("Error registering user", "error")
+                        return redirect(url_for("register"))
+
+                    user_id = row[0]
+
+        except psycopg.errors.UniqueViolation:
+            flash("That username is already taken.", "error")
+
+        session.clear()
+        session["user_id"] = user_id
+        session["username"] = username
+
+        return redirect(url_for("dashboard"))
+    return render_template("register.html")
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "").strip()
+
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT id, username, password_hash
+                    FROM users
+                    WHERE username = %s
+                """, (username,))
+
+                user = cursor.fetchone()
+
+                if user is None or not check_password_hash(user[2], password):
+                    flash("Invalid username or password", "error")
+                    return redirect(url_for("login"))
+
+        session.clear()
+        session["user_id"] = user[0]
+        session["username"] = user[1]
+
+        return redirect(url_for("dashboard"))
+    return render_template("login.html")
+
+@app.route("/logout", methods=["POST"])
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
+
 @app.route("/")
+@login_required
 def dashboard():
-    task = get_current_task()
+    user_id = session["user_id"]
+    task = get_current_task(user_id)
     return render_template("dashboard.html", task=task)
 
 @app.route("/tasks")
 def show_tasks():
-    tasks = get_tasks()
+    tasks = get_tasks(session["user_id"])
 
     return render_template(
         "tasks.html",
@@ -92,19 +191,19 @@ def add_task():
         description = request.form["description"]
         due_date = request.form.get("due_date")
         priority = request.form["priority"]
+        user_id = session["user_id"]
 
         if due_date:
             due_date = datetime.fromisoformat(due_date)
         else:
             due_date = None
 
-        #TODO: need to change for different users
         with get_connection() as connection:
                 with connection.cursor() as cursor:
                     cursor.execute("""
                         INSERT INTO tasks (user_id, description, due_date, priority)
-                        VALUES (1, %s, %s, %s) 
-                    """, (description, due_date, priority))
+                        VALUES (%s, %s, %s, %s) 
+                    """, (user_id, description, due_date, priority))
 
         flash("Task added successfully ✓", "success")
         return redirect(url_for("dashboard"))
@@ -127,8 +226,8 @@ def clear_completed_tasks():
         with connection.cursor() as cursor:
             cursor.execute("""
                 DELETE FROM tasks
-                WHERE status = 'COMPLETED'
-            """)
+                WHERE user_id = %s AND status = 'COMPLETED'
+            """, (session["user_id"],))
 
             deleted_count = cursor.rowcount
     flash(

@@ -8,7 +8,10 @@
 </head>
 <body>
     <header class="header">
-        <h1>Welcome to your Task Manager!</h1>
+        <form action="{{ url_for('logout') }}" method="POST">
+            <h1>Welcome, {{ session["username"] }}!</h1>
+            <button type="submit" class="action-button secondary">Log Out</button>
+        </form>
     </header>
     
     <main class="container">

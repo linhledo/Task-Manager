@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Register | Task Manager</title>
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <main class="container">
+        <section class="task-card">
+            <h1>Create an account</h1>
+            <p>Your productivity journey starts today!</p>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }}">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <form method="POST" action="{{ url_for('register') }}">
+                <label for="username">Username</label>
+                <input id="username" name="username"
+                       type="text" maxlength="100" required>
+
+                <label for="password">Password</label>
+                <input id="password" name="password"
+                    type="password" minlength="8" required>
+                
+                <button class="complete-button" type="submit">
+                    Register
+                </button>
+            </form>
+
+            <p>Already registered?
+                <a href="{{ url_for('login') }}" class="action-button">Log in</a>
+            </p>
+        </section>
+    </main>
+</body>
+</html>
