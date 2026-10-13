@@ -23,7 +23,7 @@ def get_tasks():
     cursor = connection.cursor()
 
     cursor.execute("""
-        SELECT * 
+        SELECT id, description, due_date, priority, status
         FROM tasks 
         WHERE user_id = %s
         ORDER BY priority DESC, due_date ASC NULLS LAST, created_at ASC
@@ -40,7 +40,7 @@ def get_tasks():
         tasks.append(
             {
                 "id": row[0],
-                "description": row[6],
+                "description": row[1],
                 "due_date": row[2],
                 "priority": row[3],
                 "status": row[4]
@@ -146,5 +146,5 @@ def revert_task(task_id):
     return jsonify({"message": "Task reverted"})
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5001, debug=True)
+    app.run(host="0.0.0.0", port=5001)
 

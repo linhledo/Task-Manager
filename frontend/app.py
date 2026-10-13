@@ -35,10 +35,10 @@ def task_service_request(method, path, **kwargs):
 
 def get_connection():
     return psycopg.connect(
-            host="localhost",
-            port=5432,
-            dbname="postgres",
-            user="postgres",
+            host=os.environ.get("DB_HOST", "localhost"),
+            port=os.environ.get("DB_PORT", "5432"),
+            dbname=os.environ.get("DB_NAME", "postgres"),
+            user=os.environ.get("DB_USER", "postgres"),
             password=os.environ["DB_PASSWORD"]
         )
 
@@ -228,4 +228,4 @@ def revert_task(task_id):
     return redirect(url_for("show_tasks"))
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=5000)
