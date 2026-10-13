@@ -4,6 +4,7 @@ from functools import wraps
 import os
 import psycopg
 from werkzeug.security import generate_password_hash, check_password_hash
+import requests
 
 app = Flask(__name__)
 
@@ -16,6 +17,21 @@ app.config.update(
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_SECURE = os.environ.get("COOKIE_SECURE") == "1"
 )
+
+TASK_SERVICE_URL = os.environ.get(
+    "TASK_SERVICE_URL",
+    "http://127.0.0.1:5001"
+)
+
+def task_service_request(method, path, **kwargs):
+    response = requests.request(
+        method,
+        f"{TASK_SERVICE_URL}{path}",
+        timeout=5,
+        **kwargs
+    )
+    response.raise_for_status()
+    return response
 
 def get_connection():
     return psycopg.connect(
@@ -33,64 +49,6 @@ def login_required(function):
             return redirect(url_for("login"))
         return function(*args, **kwargs)
     return wrapper
-
-    
-def get_tasks(user_id) -> list[dict] | None:
-    connection = get_connection()
-    cursor = connection.cursor()
-
-    cursor.execute("""
-        SELECT * 
-        FROM tasks 
-        WHERE user_id = %s
-        ORDER BY priority DESC
-    """, (user_id,))
-
-    rows = cursor.fetchall()
-
-    cursor.close()
-    connection.close()
-
-    if rows is None:
-        return None
-
-    tasks = []
-    for row in rows:
-        tasks.append(
-            {
-                "id": row[0],
-                "description": row[6],
-                "due_date": row[2],
-                "priority": row[3],
-                "status": row[4]
-            }
-        )
-
-    return tasks
-
-def get_current_task(user_id) -> dict | None:
-    with get_connection() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute("""
-                SELECT id, description, due_date, priority, status
-                FROM tasks
-                WHERE user_id = %s AND status = 'PENDING'
-                ORDER BY priority DESC, due_date ASC NULLS LAST, created_at ASC
-                LIMIT 1
-            """, (user_id,))
-
-            row = cursor.fetchone()
-
-            if row is None:
-                return None
-
-            return {
-                "id": row[0],
-                "description": row[1],
-                "due_date": row[2],
-                "priority": row[3],
-                "status": row[4]
-            }
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
@@ -129,6 +87,7 @@ def register():
 
         except psycopg.errors.UniqueViolation:
             flash("That username is already taken.", "error")
+            return redirect(url_for("register"))
 
         session.clear()
         session["user_id"] = user_id
@@ -172,64 +131,83 @@ def logout():
 @app.route("/")
 @login_required
 def dashboard():
-    user_id = session["user_id"]
-    task = get_current_task(user_id)
+    response = task_service_request(
+        "GET",
+        "/tasks",
+        params={"user_id": session["user_id"]}
+    )
+
+    tasks = response.json()
+    task = next(
+        (task for task in tasks if task["status"] == "PENDING"),
+        None
+    )
+
     return render_template("dashboard.html", task=task)
 
 @app.route("/tasks")
+@login_required
 def show_tasks():
-    tasks = get_tasks(session["user_id"])
 
-    return render_template(
-        "tasks.html",
-        tasks=tasks
+    response = task_service_request(
+        "GET",
+        "/tasks",
+        params={"user_id": session["user_id"]}
     )
 
+    tasks = response.json()
+
+    return render_template("tasks.html", tasks=tasks)
+
 @app.route("/tasks/new", methods=["GET", "POST"])
+@login_required
 def add_task():
     if request.method == "POST":
-        description = request.form["description"]
-        due_date = request.form.get("due_date")
-        priority = request.form["priority"]
-        user_id = session["user_id"]
+        description = request.form.get("description", "").strip()
+        due_date = request.form.get("due_date") or None
+        priority = request.form.get("priority") or None
 
-        if due_date:
-            due_date = datetime.fromisoformat(due_date)
-        else:
-            due_date = None
+        if not description:
+            flash("Please enter a description.", "error")
+            return redirect(url_for("add_task", method="GET"))
 
-        with get_connection() as connection:
-                with connection.cursor() as cursor:
-                    cursor.execute("""
-                        INSERT INTO tasks (user_id, description, due_date, priority)
-                        VALUES (%s, %s, %s, %s) 
-                    """, (user_id, description, due_date, priority))
+        task_service_request(
+            "POST",
+            "/tasks",
+            json={
+                "user_id": session["user_id"],
+                "description": description,
+                "due_date": due_date,
+                "priority": priority
+            }
+        )
 
         flash("Task added successfully ✓", "success")
         return redirect(url_for("dashboard"))
+    
     return render_template("add_task.html")
 
 @app.route("/tasks/<int:task_id>/complete", methods=["POST"])
 def complete_task(task_id):
-    with get_connection() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute("""
-                UPDATE tasks
-                SET status = 'COMPLETED'
-                where id = %s
-            """, (task_id,))
+    task_service_request(
+        "POST",
+        f"/tasks/{task_id}/complete",
+        json={
+            "user_id": session["user_id"]
+        }
+    )
     return redirect(url_for("dashboard"))
 
 @app.route("/tasks/clear-completed", methods=["POST"])
 def clear_completed_tasks():
-    with get_connection() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute("""
-                DELETE FROM tasks
-                WHERE user_id = %s AND status = 'COMPLETED'
-            """, (session["user_id"],))
+    response = task_service_request(
+        "DELETE",
+        "/tasks/clear-completed",
+        params={"user_id": session["user_id"]}
+    )
 
-            deleted_count = cursor.rowcount
+    deleted_count = response.json().get("deleted_count")
+
     flash(
         f"Deleted {deleted_count} completed task(s).",
         "success"
@@ -238,15 +216,16 @@ def clear_completed_tasks():
 
 @app.route("/tasks/<int:task_id>/revert", methods=["POST"])
 def revert_task(task_id):
-    with get_connection() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute("""
-                UPDATE tasks
-                SET status = 'PENDING'
-                where id = %s
-            """, (task_id,))
+    task_service_request(
+        "POST",
+        f"/tasks/{task_id}/revert",
+        json={"user_id": session["user_id"]}
+    )
     flash(
         f"Reverted task back to Pending ✓",
         "success"
     )
     return redirect(url_for("show_tasks"))
+
+if __name__ == "__main__":
+    app.run(debug=True)
