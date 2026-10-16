@@ -13,6 +13,10 @@ def get_connection():
             password=os.environ["DB_PASSWORD"]
         )
 
+@app.get("/health")
+def health():
+    return jsonify({"status": "healthy"}), 200
+
 @app.route("/tasks", methods=["GET"])
 def get_tasks():
     user_id = request.args.get("user_id", type=int)

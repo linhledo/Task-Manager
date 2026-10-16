@@ -24,8 +24,6 @@ services:
       DB_NAME: postgres
       DB_USER: postgres
       DB_PASSWORD: ${DB_PASSWORD}
-    ports:
-      - "5001:5001"
     depends_on:
       db:
         condition: service_healthy
@@ -36,11 +34,7 @@ services:
       dockerfile: Dockerfile
     environment:
       TASK_SERVICE_URL: http://task-service:5001
-      DB_HOST: db
-      DB_PORT: "5432"
-      DB_NAME: postgres
-      DB_USER: postgres
-      DB_PASSWORD: ${DB_PASSWORD}
+      USER_SERVICE_URL: http://user-service:5003
       SECRET_KEY: ${SECRET_KEY}
       COOKIE_SECURE: "0"
     ports:
@@ -50,6 +44,24 @@ services:
         condition: service_healthy
       task-service:
         condition: service_started
+      user-service:
+        condition: service_started
+
+  user-service:
+    build:
+      context: ./user-service
+      dockerfile: Dockerfile
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: postgres
+      DB_USER: postgres
+      DB_PASSWORD: ${DB_PASSWORD}
+    expose:
+      - "5003"
+    depends_on:
+      db:
+        condition: service_healthy
 
 volumes:
   postgres_data:

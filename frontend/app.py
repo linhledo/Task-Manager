@@ -2,7 +2,6 @@ from datetime import datetime
 from flask import Flask, redirect, url_for, render_template, request, session, flash
 from functools import wraps
 import os
-import psycopg
 from werkzeug.security import generate_password_hash, check_password_hash
 import requests
 
@@ -23,6 +22,11 @@ TASK_SERVICE_URL = os.environ.get(
     "http://127.0.0.1:5001"
 )
 
+USER_SERVICE_URL = os.environ.get(
+    "USER_SERVICE_URL",
+    "http://127.0.0.1:5003"
+)
+
 def task_service_request(method, path, **kwargs):
     response = requests.request(
         method,
@@ -33,14 +37,13 @@ def task_service_request(method, path, **kwargs):
     response.raise_for_status()
     return response
 
-def get_connection():
-    return psycopg.connect(
-            host=os.environ.get("DB_HOST", "localhost"),
-            port=os.environ.get("DB_PORT", "5432"),
-            dbname=os.environ.get("DB_NAME", "postgres"),
-            user=os.environ.get("DB_USER", "postgres"),
-            password=os.environ["DB_PASSWORD"]
-        )
+def user_service_request(method, path, **kwargs):
+    response = requests.request(
+        method,
+        f"{USER_SERVICE_URL}{path}",
+        **kwargs
+    )
+    return response
 
 def login_required(function):
     @wraps(function)
@@ -49,6 +52,10 @@ def login_required(function):
             return redirect(url_for("login"))
         return function(*args, **kwargs)
     return wrapper
+
+@app.get("/health")
+def health():
+    return {"status": "healthy"}, 200
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
@@ -65,33 +72,28 @@ def register():
                   "error")
             return redirect(url_for("register"))
 
-        password_hash = generate_password_hash(password)
+        response = user_service_request(
+            "POST",
+            "/users/register",
+            json={
+                "username": username,
+                "password": password
+            }
+        )
 
-        user_id = ""
-        try:
-            with get_connection() as connection:
-                with connection.cursor() as cursor:
-                    cursor.execute("""
-                        INSERT INTO users (username, password_hash)
-                        VALUES (%s, %s)
-                        RETURNING id
-                    """, (username, password_hash))
-
-                    row = cursor.fetchone()
-
-                    if row is None:
-                        flash("Error registering user", "error")
-                        return redirect(url_for("register"))
-
-                    user_id = row[0]
-
-        except psycopg.errors.UniqueViolation:
+        if response.status_code == 409:
             flash("That username is already taken.", "error")
             return redirect(url_for("register"))
 
+        if response.status_code == 400:
+            flash("Error creating user.", "error")
+            return redirect(url_for("register"))
+
+        response = response.json()
+
         session.clear()
-        session["user_id"] = user_id
-        session["username"] = username
+        session["user_id"] = response["id"]
+        session["username"] = response["username"]
 
         return redirect(url_for("dashboard"))
     return render_template("register.html")
@@ -102,23 +104,28 @@ def login():
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "").strip()
 
-        with get_connection() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute("""
-                    SELECT id, username, password_hash
-                    FROM users
-                    WHERE username = %s
-                """, (username,))
+        if not username or not password:
+            flash("Please enter a username and password", "error")
+            return redirect(url_for("register"))
 
-                user = cursor.fetchone()
+        response = user_service_request(
+            "POST",
+            "/users/login",
+            json={
+                "username": username,
+                "password": password
+            }
+        )
 
-                if user is None or not check_password_hash(user[2], password):
-                    flash("Invalid username or password", "error")
-                    return redirect(url_for("login"))
+        if response.status_code == 401:
+            flash("Invalid username or password", "error")
+            return redirect(url_for("login"))
+
+        response = response.json()
 
         session.clear()
-        session["user_id"] = user[0]
-        session["username"] = user[1]
+        session["user_id"] = response["id"]
+        session["username"] = response["username"]
 
         return redirect(url_for("dashboard"))
     return render_template("login.html")
