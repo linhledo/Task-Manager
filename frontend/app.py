@@ -155,7 +155,6 @@ def dashboard():
 @app.route("/tasks")
 @login_required
 def show_tasks():
-
     response = task_service_request(
         "GET",
         "/tasks",
@@ -229,10 +228,40 @@ def revert_task(task_id):
         json={"user_id": session["user_id"]}
     )
     flash(
-        f"Reverted task back to Pending ✓",
+        f"Reverted task back to pending ✓",
         "success"
     )
     return redirect(url_for("show_tasks"))
+
+@login_required
+@app.route("/tasks/<int:task_id>/edit", methods=["GET", "POST"])
+def edit_task(task_id):
+    if request.method == "POST":
+        description = request.form.get("description", "").strip()
+        due_date = request.form.get("due_date") or None
+        priority = request.form.get("priority") or None
+        
+        if not description:
+            flash("Please enter a description.", "error")
+            return redirect(url_for("edit_task", task_id=task_id, method="GET"))
+        
+        task_service_request(
+            "POST",
+            f"/tasks/{task_id}/edit",
+            json={
+                "user_id": session["user_id"],
+                "description": description,
+                "due_date": due_date,
+                "priority": priority
+            }
+        )
+
+        flash(
+            f"Task successfully edited ✓",
+            "success"
+        )
+        return redirect(url_for("show_tasks"))
+    return render_template("edit_task.html", task_id=task_id)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)

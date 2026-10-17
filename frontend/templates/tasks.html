@@ -70,6 +70,13 @@
                                     ⤹ Revert Task Back To Pending
                                 </button>
                             </form>
+                        {% else %}
+                            <form action="{{ url_for('edit_task', task_id=task.id) }}" 
+                            method="GET">
+                                <button type="submit" class="action-button">
+                                    ✏️ Edit Task
+                                </button>
+                            </form>
                         {% endif %}
                     </section>
                 {% endfor %}

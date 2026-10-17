@@ -41,6 +41,8 @@ spec:
                 secretKeyRef:
                   name: task-manager-secrets
                   key: DB_PASSWORD
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
           volumeMounts:
             - name: postgres-storage
               mountPath: /var/lib/postgresql/data
@@ -84,7 +86,7 @@ spec:
     spec:
       containers:
         - name: task-service
-          image: task-manager-task-service:healthfix
+          image: australia-southeast1-docker.pkg.dev/steam-way-504703-c4/task-manager/task-service:healthfix
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 5001
@@ -144,7 +146,7 @@ spec:
     spec:
       containers:
         - name: user-service
-          image: task-manager-user-service:latest
+          image: australia-southeast1-docker.pkg.dev/steam-way-504703-c4/task-manager/user-service:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 5003
@@ -204,7 +206,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: task-manager-frontend:healthfix
+          image: australia-southeast1-docker.pkg.dev/steam-way-504703-c4/task-manager/frontend:healthfix
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 5000
@@ -239,7 +241,7 @@ metadata:
   name: frontend
   namespace: task-manager
 spec:
-  type: NodePort
+  type: LoadBalancer
   selector:
     app: frontend
   ports:

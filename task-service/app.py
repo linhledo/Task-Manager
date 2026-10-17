@@ -147,7 +147,41 @@ def revert_task(task_id):
     if updated == 0:
         return jsonify({"error": "Task not found"}), 404
             
-    return jsonify({"message": "Task reverted"})
+    return jsonify({"message": "Task reverted"}), 201
+
+@app.route("/tasks/<int:task_id>/edit", methods=["POST"])
+def edit_task(task_id):
+    data = request.get_json(silent=True) or {}
+    user_id = data.get("user_id")
+    description = data.get("description")
+    due_date = data.get("due_date")
+    priority = data.get("priority")
+
+    if not user_id or not description:
+        return jsonify({"error": "Missing required fields"}), 400
+
+    if priority is None:
+        priority = 0
+
+    try:
+        user_id = int(user_id)
+        priority = int(priority)
+    except (ValueError, TypeError):
+        return jsonify({"error": "Invalid user_id or priority"}), 400
+    
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE tasks
+                SET description = %s, due_date = %s, priority = %s
+                WHERE id = %s AND user_id = %s
+            """, (description, due_date, priority, task_id, user_id))
+            updated = cursor.rowcount
+
+    if updated == 0:
+        return jsonify({"error": "Task not found"}), 404
+            
+    return jsonify({"message": "Task Edited"}), 201
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5001)
